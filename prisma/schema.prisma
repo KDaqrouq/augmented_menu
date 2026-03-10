@@ -1,0 +1,125 @@
+// Data model for v1.
+// Authoritative source: docs/TECH_SPECS.md (Data Model section).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum MeasurementType {
+  PLATE_DIAMETER_CM
+  BOWL_DIAMETER_CM
+  CUP_HEIGHT_CM
+  MAX_WIDTH_CM
+}
+
+enum ArAssetStatus {
+  NONE
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum ProcessingJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model Restaurant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  categories MenuCategory[]
+  items      MenuItem[]
+}
+
+model MenuCategory {
+  id           String @id @default(uuid())
+  restaurantId String
+  name         String
+  sortOrder    Int
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  items      MenuItem[]
+}
+
+model MenuItem {
+  id              String          @id @default(uuid())
+  restaurantId    String
+  categoryId      String?
+  name            String
+  description     String?
+  price           String?
+  isAvailable     Boolean         @default(true)
+  measurementType MeasurementType
+  measurementValue Float
+  arAssetStatus   ArAssetStatus   @default(NONE)
+  arAssetVersion  Int             @default(0)
+
+  restaurant Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  category   MenuCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  media  MenuItemMedia[]
+  assets MenuItemAsset[]
+  jobs   ProcessingJob[]
+}
+
+model MenuItemMedia {
+  id        String @id @default(uuid())
+  itemId    String
+  url       String
+  sortOrder Int
+  metadata  Json?
+
+  item MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+model MenuItemAsset {
+  id          String   @id @default(uuid())
+  itemId      String
+  version     Int
+  glbUrl      String
+  usdzUrl     String?
+  units       String
+  bboxX       Float
+  bboxY       Float
+  bboxZ       Float
+  scaleFactor Float
+  polyCount   Int?
+  textureSize Int?
+  createdAt   DateTime @default(now())
+
+  item MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+model ProcessingJob {
+  id           String              @id @default(uuid())
+  itemId       String
+  version      Int
+  status       ProcessingJobStatus
+  errorMessage String?
+  logsUrl      String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  item MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+model AnalyticsEvent {
+  id           String   @id @default(uuid())
+  eventName    String
+  restaurantId String?
+  itemId       String?
+  properties   Json?
+  createdAt    DateTime @default(now())
+}
