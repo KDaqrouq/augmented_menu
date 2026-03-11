@@ -1,9 +1,10 @@
 import { prisma } from "./db";
-import { stubModelGenerator } from "@/lib/model-generator";
+import { tripoModelGenerator } from "@/lib/model-generator";
+import { computeScaleFactor } from "@/lib/scale";
 import type { Generate3DPayload } from "@/lib/queue";
 
 /**
- * Process a generate-3d job: run generator, create MenuItemAsset, set item READY, update job status.
+ * Process a generate-3d job: run Tripo generator, create MenuItemAsset, set item READY, update job status.
  */
 export async function processGenerate3DJob(payload: Generate3DPayload): Promise<void> {
   const { itemId, version, processingJobId } = payload;
@@ -14,9 +15,28 @@ export async function processGenerate3DJob(payload: Generate3DPayload): Promise<
   });
 
   try {
-    const result = await stubModelGenerator.generate(itemId, version);
+    const item = await prisma.menuItem.findUniqueOrThrow({
+      where: { id: itemId },
+      include: {
+        media: { orderBy: { sortOrder: "asc" } },
+      },
+    });
+    const photoUrls = item.media.map((m) => m.url).filter(Boolean);
+    if (photoUrls.length === 0) {
+      throw new Error("Item has no photos; upload 6–12 photos before generating 3D");
+    }
 
-    const scaleFactor = 1.0;
+    const result = await tripoModelGenerator.generate(itemId, version, {
+      photoUrls,
+    });
+
+    const scaleFactor = computeScaleFactor(
+      item.measurementType,
+      item.measurementValue,
+      result.bboxX,
+      result.bboxY,
+      result.bboxZ
+    );
 
     await prisma.menuItemAsset.create({
       data: {

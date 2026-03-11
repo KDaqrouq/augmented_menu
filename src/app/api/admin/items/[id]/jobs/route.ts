@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 
 /**
  * GET /api/admin/items/[id]/jobs
- * Returns processing jobs for the item (status, error, etc.).
+ * Returns processing jobs for the item (status, error, etc.) plus
+ * a lightweight view of the latest asset (for admin hints).
  * TECH_SPECS §4, Checkpoint 3B.
  */
 export async function GET(
@@ -22,5 +23,14 @@ export async function GET(
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json({ jobs });
+  const latestAsset = await prisma.menuItemAsset.findFirst({
+    where: { itemId },
+    orderBy: { createdAt: "desc" },
+    select: { glbUrl: true, usdzUrl: true },
+  });
+
+  return NextResponse.json({
+    jobs,
+    latestAsset,
+  });
 }

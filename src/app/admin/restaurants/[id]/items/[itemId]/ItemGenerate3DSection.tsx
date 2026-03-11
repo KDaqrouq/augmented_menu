@@ -11,6 +11,11 @@ type Job = {
   createdAt: string;
 };
 
+type LatestAsset = {
+  glbUrl: string;
+  usdzUrl: string | null;
+} | null;
+
 export function ItemGenerate3DSection({
   itemId,
   initialStatus,
@@ -23,11 +28,15 @@ export function ItemGenerate3DSection({
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [latestAsset, setLatestAsset] = useState<LatestAsset>(null);
 
   function loadJobs() {
     fetch(`/api/admin/items/${itemId}/jobs`)
       .then((r) => r.json())
-      .then((data) => data.jobs && setJobs(data.jobs))
+      .then((data) => {
+        if (data.jobs) setJobs(data.jobs);
+        if ("latestAsset" in data) setLatestAsset(data.latestAsset ?? null);
+      })
       .catch(() => {});
   }
 
@@ -67,6 +76,12 @@ export function ItemGenerate3DSection({
       <p className="mt-1 text-sm text-gray-500">
         Status: <span className="font-medium">{status}</span>
       </p>
+      {status === "READY" && latestAsset && latestAsset.glbUrl && !latestAsset.usdzUrl && (
+        <p className="mt-1 text-sm text-amber-700">
+          iOS AR unavailable: USDZ was too large to store; iOS users will see the 3D viewer
+          fallback instead of Quick Look.
+        </p>
+      )}
       <div className="mt-3 flex items-center gap-3">
         <button
           type="button"

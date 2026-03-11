@@ -93,13 +93,19 @@ let queue: Queue<JobPayload> | null = null;
 
 /**
  * Get the model-generation queue (lazy init).
+ * Retries: 3 attempts with exponential backoff. Completed/failed jobs are trimmed so Redis does not grow indefinitely.
  */
 export function getModelGenerationQueue(): Queue<JobPayload> {
   if (!queue) {
     const connection = getRedisConnectionOptions();
     queue = new Queue<JobPayload>(QUEUE_NAME, {
       connection,
-      defaultJobOptions: { removeOnComplete: 100 },
+      defaultJobOptions: {
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 500 },
+        attempts: 3,
+        backoff: { type: "exponential", delay: 2000 },
+      },
     });
   }
   return queue;
@@ -107,10 +113,15 @@ export function getModelGenerationQueue(): Queue<JobPayload> {
 
 /**
  * Add a job to the queue. Use from API routes.
+ * Uses job-level retry/backoff (3 attempts, exponential).
  */
 export async function enqueueGenerate3D(payload: Generate3DPayload): Promise<string> {
   const q = getModelGenerationQueue();
-  const job = await q.add("generate-3d", payload, { jobId: payload.processingJobId });
+  const job = await q.add("generate-3d", payload, {
+    jobId: payload.processingJobId,
+    attempts: 3,
+    backoff: { type: "exponential", delay: 2000 },
+  });
   return job.id!;
 }
 
