@@ -1,6 +1,6 @@
 import { prisma } from "./db";
 import { tripoModelGenerator } from "@/lib/model-generator";
-import { computeScaleFactor } from "@/lib/scale";
+import { computeScaleFactor, type MeasurementType } from "@/lib/scale";
 import type { Generate3DPayload } from "@/lib/queue";
 
 /**
@@ -28,6 +28,8 @@ export async function processGenerate3DJob(payload: Generate3DPayload): Promise<
 
     const result = await tripoModelGenerator.generate(itemId, version, {
       photoUrls,
+      measurementType: item.measurementType as MeasurementType,
+      measurementValueCm: item.measurementValue,
     });
 
     const scaleFactor = computeScaleFactor(

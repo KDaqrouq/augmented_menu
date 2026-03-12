@@ -224,15 +224,18 @@ export async function waitForTask(
 }
 
 /**
- * Full flow:
+ * Full flow (GLB only):
  * - If one image: image_to_model
  * - If multiple images: multiview_to_model
- * - Then convert_model → USDZ, if possible
+ *
+ * Returns the primary GLB URL and the base task id so callers can
+ * optionally run convert_model (e.g. to USDZ) with additional options
+ * like scale_factor.
  */
 export async function generateFromImages(
   imageUrls: string[],
   options?: { timeoutMs?: number }
-): Promise<{ glbUrl: string; usdzUrl?: string | null }> {
+): Promise<{ glbUrl: string; baseTaskId: string }> {
   if (imageUrls.length === 0) {
     throw new Error("At least one image URL is required");
   }
@@ -256,22 +259,38 @@ export async function generateFromImages(
     throw new Error(`Tripo task ${baseTaskId} succeeded but no model URL in output`);
   }
 
-  // 2) Optional: convert to USDZ for iOS Quick Look.
-  let usdzUrl: string | null = null;
-  try {
-    const convertTaskId = await createConvertToUsdZTask(baseTaskId);
-    const convertOutput = await waitForTask(convertTaskId, {
-      timeoutMs,
-    });
-    usdzUrl =
-      convertOutput.modelUrl ??
-      convertOutput.baseModelUrl ??
-      convertOutput.pbrModelUrl ??
-      null;
-  } catch {
-    // If conversion fails, we still return GLB and let the caller handle lack of USDZ.
-    usdzUrl = null;
+  return { glbUrl, baseTaskId };
+}
+
+/**
+ * Helper to run a convert_model → USDZ task for an existing model task.
+ * Accepts optional Tripo scale_factor so the converted asset can be
+ * pre-scaled (e.g. to match real-world size for Quick Look).
+ */
+export async function convertModelToUsdZ(
+  originalTaskId: string,
+  options: { timeoutMs?: number; scaleFactor?: number } = {}
+): Promise<string | null> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  const body: Record<string, unknown> = {
+    type: "convert_model" as const,
+    format: "USDZ" as const,
+    original_model_task_id: originalTaskId,
+  };
+
+  if (typeof options.scaleFactor === "number" && Number.isFinite(options.scaleFactor)) {
+    body.scale_factor = options.scaleFactor;
   }
 
-  return { glbUrl, usdzUrl };
+  const convertTaskId = await postTask(body);
+  const convertOutput = await waitForTask(convertTaskId, { timeoutMs });
+
+  const usdzUrl =
+    convertOutput.modelUrl ??
+    convertOutput.baseModelUrl ??
+    convertOutput.pbrModelUrl ??
+    null;
+
+  return usdzUrl ?? null;
 }
