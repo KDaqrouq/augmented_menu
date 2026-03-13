@@ -280,6 +280,8 @@ export async function convertModelToUsdZ(
     type: "convert_model" as const,
     format: "USDZ" as const,
     original_model_task_id: originalTaskId,
+    // Keep USDZ texture resolution reasonable for mobile.
+    texture_size: 2048,
   };
 
   if (typeof options.scaleFactor === "number" && Number.isFinite(options.scaleFactor)) {
