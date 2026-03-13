@@ -53,8 +53,10 @@ export const tripoModelGenerator: ModelGenerator = {
     const measurementType = context?.measurementType;
     const measurementValueCm = context?.measurementValueCm;
 
-    if (photoUrls.length === 0) {
-      throw new Error("At least one photo URL is required for Tripo generation");
+    if (photoUrls.length < 4) {
+      throw new Error(
+        "At least 4 photos are required for Tripo generation. The first 4 must be [front, left, back, right]."
+      );
     }
 
     if (!measurementType || typeof measurementValueCm !== "number") {

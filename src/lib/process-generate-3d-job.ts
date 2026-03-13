@@ -22,8 +22,10 @@ export async function processGenerate3DJob(payload: Generate3DPayload): Promise<
       },
     });
     const photoUrls = item.media.map((m) => m.url).filter(Boolean);
-    if (photoUrls.length === 0) {
-      throw new Error("Item has no photos; upload 6–12 photos before generating 3D");
+    if (photoUrls.length < 4) {
+      throw new Error(
+        "Item must have at least 4 photos before generating 3D. The first 4 are used in order as [front, left, back, right]; 6–12 total is recommended."
+      );
     }
 
     const result = await tripoModelGenerator.generate(itemId, version, {

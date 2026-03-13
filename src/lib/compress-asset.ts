@@ -8,6 +8,13 @@ function getMaxAssetBytesFromEnv(): number {
   return fallbackMb * 1024 * 1024;
 }
 
+function isCompressionEnabled(): boolean {
+  const flag = process.env.ENABLE_GLTF_COMPRESSION;
+  if (flag === undefined) return true; // default: enabled
+  const normalized = flag.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
 /**
  * Compress a GLB using glTF-Transform:
  * - dedup/prune/reorder
@@ -16,6 +23,9 @@ function getMaxAssetBytesFromEnv(): number {
  * - meshopt compression
  *
  * Returns the compressed buffer and logs before/after sizes.
+ *
+ * If ENABLE_GLTF_COMPRESSION is set to a falsy value (false/0/no), the original
+ * buffer is returned unchanged, but MAX_ASSET_MB is still enforced.
  */
 export async function compressGlbBuffer(
   input: Buffer,
@@ -27,6 +37,18 @@ export async function compressGlbBuffer(
   console.log(
     `[compress-asset] Original GLB size: ${(originalBytes / (1024 * 1024)).toFixed(2)} MB`
   );
+
+  if (!isCompressionEnabled()) {
+    console.log("[compress-asset] Compression disabled via ENABLE_GLTF_COMPRESSION; skipping transforms.");
+    if (originalBytes > maxBytes) {
+      throw new Error(
+        `Model is too large (${(originalBytes / (1024 * 1024)).toFixed(
+          2
+        )} MB) and compression is disabled. Enable compression or reduce source model size.`
+      );
+    }
+    return Buffer.from(input);
+  }
 
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
 

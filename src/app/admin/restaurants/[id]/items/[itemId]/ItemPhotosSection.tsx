@@ -54,9 +54,14 @@ export function ItemPhotosSection({
 
   return (
     <div className="mt-10 border-t border-gray-200 pt-8">
-      <h2 className="text-lg font-semibold">Photos (6–12 recommended)</h2>
+      <h2 className="text-lg font-semibold">Photos (4–12 recommended)</h2>
       <p className="mt-1 text-sm text-gray-500">
         {media.length} uploaded. {remaining} slots left.
+      </p>
+      <p className="mt-1 text-xs text-gray-500">
+        The first 4 photos are used for 3D generation in this order: <strong>front</strong>,{" "}
+        <strong>left</strong>, <strong>back</strong>, <strong>right</strong>. Upload them in that
+        order (and optionally add extra angles for the gallery).
       </p>
 
       {media.length > 0 && (

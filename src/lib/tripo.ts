@@ -94,7 +94,8 @@ async function postTask(body: unknown): Promise<string> {
 }
 
 /**
- * Create an image_to_model task (single image) using ImageToModelRequest.
+ * (Legacy) Create an image_to_model task (single image) using ImageToModelRequest.
+ * Currently not used — pipeline requires 4+ images and always uses multiview_to_model.
  */
 export async function createImageToModelTask(imageUrl: string): Promise<string> {
   if (!imageUrl) throw new Error("imageUrl is required");
@@ -114,13 +115,15 @@ export async function createImageToModelTask(imageUrl: string): Promise<string> 
 
 /**
  * Create a multiview_to_model task when we have multiple images.
- * We map up to 4 URLs into [front, left, back, right] order.
+ * We map exactly 4 URLs into [front, left, back, right] order.
  */
 export async function createMultiviewToModelTask(
   imageUrls: string[]
 ): Promise<string> {
-  if (imageUrls.length < 2) {
-    throw new Error("At least two image URLs are required for multiview_to_model");
+  if (imageUrls.length < 4) {
+    throw new Error(
+      "At least 4 image URLs are required for multiview_to_model (front, left, back, right)"
+    );
   }
 
   const files: unknown[] = [{}, {}, {}, {}];
@@ -136,7 +139,9 @@ export async function createMultiviewToModelTask(
   const body = {
     type: "multiview_to_model" as const,
     files,
-    // Let model_version/defaults be chosen by Tripo.
+    // Explicitly choose model_version and texture_quality for consistent output.
+    model_version: "v3.1-20260211",
+    texture_quality: "detailed",
   };
 
   return postTask(body);
@@ -225,8 +230,7 @@ export async function waitForTask(
 
 /**
  * Full flow (GLB only):
- * - If one image: image_to_model
- * - If multiple images: multiview_to_model
+ * - Requires at least 4 images (multiview_to_model).
  *
  * Returns the primary GLB URL and the base task id so callers can
  * optionally run convert_model (e.g. to USDZ) with additional options
@@ -236,17 +240,16 @@ export async function generateFromImages(
   imageUrls: string[],
   options?: { timeoutMs?: number }
 ): Promise<{ glbUrl: string; baseTaskId: string }> {
-  if (imageUrls.length === 0) {
-    throw new Error("At least one image URL is required");
+  if (imageUrls.length < 4) {
+    throw new Error(
+      "At least 4 image URLs are required for 3D generation; first 4 must be [front, left, back, right]"
+    );
   }
 
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  // 1) Base model (GLB) task.
-  const baseTaskId =
-    imageUrls.length === 1
-      ? await createImageToModelTask(imageUrls[0]!)
-      : await createMultiviewToModelTask(imageUrls);
+  // 1) Base model (GLB) task: always use multiview_to_model with 4+ images.
+  const baseTaskId = await createMultiviewToModelTask(imageUrls);
 
   const baseOutput = await waitForTask(baseTaskId, { timeoutMs });
   const glbUrl =
