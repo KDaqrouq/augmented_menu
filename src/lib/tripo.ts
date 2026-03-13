@@ -141,7 +141,7 @@ export async function createMultiviewToModelTask(
     files,
     // Explicitly choose model_version and texture_quality for consistent output.
     model_version: "v3.1-20260211",
-    texture_quality: "detailed",
+    texture_quality: "standard",
   };
 
   return postTask(body);
