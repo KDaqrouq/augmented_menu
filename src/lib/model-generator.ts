@@ -22,6 +22,8 @@ export type ModelGeneratorContext = {
   photoUrls: string[];
   measurementType: MeasurementType;
   measurementValueCm: number;
+  /** When provided, overrides env for GLB compression (from job payload, set on Vercel). */
+  enableCompression?: boolean;
 };
 
 export interface ModelGenerator {
@@ -89,10 +91,11 @@ export const tripoModelGenerator: ModelGenerator = {
       bbox.bboxZ
     );
 
-    // Compress GLB before upload; enforce size cap.
+    // Compress GLB before upload; enforce size cap. enableCompression from job payload (set on Vercel).
     const maxBytes = getMaxAssetBytes();
     const compressedGlbBuffer = await compressGlbBuffer(originalGlbBuffer, {
       targetMaxBytes: maxBytes,
+      enableCompression: context?.enableCompression,
     });
 
     const glbUrl = await uploadAssetFile(

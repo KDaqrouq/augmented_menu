@@ -8,7 +8,11 @@ function getMaxAssetBytesFromEnv(): number {
   return fallbackMb * 1024 * 1024;
 }
 
-function isCompressionEnabled(): boolean {
+/**
+ * Read ENABLE_GLTF_COMPRESSION from env. Used by API route (Vercel) to pass into job payload.
+ * Default: true. Falsy: "0", "false", "no" (case-insensitive).
+ */
+export function isCompressionEnabledFromEnv(): boolean {
   const flag = process.env.ENABLE_GLTF_COMPRESSION;
   if (flag === undefined) return true; // default: enabled
   const normalized = flag.trim().toLowerCase();
@@ -19,27 +23,26 @@ function isCompressionEnabled(): boolean {
  * Compress a GLB using glTF-Transform:
  * - dedup/prune/reorder
  * - quantize geometry
- * - resize textures to <= 2048
- * - meshopt compression
  *
- * Returns the compressed buffer and logs before/after sizes.
- *
- * If ENABLE_GLTF_COMPRESSION is set to a falsy value (false/0/no), the original
- * buffer is returned unchanged, but MAX_ASSET_MB is still enforced.
+ * When options.enableCompression is provided, that overrides env (used by worker from job payload).
+ * When undefined, falls back to ENABLE_GLTF_COMPRESSION from env.
+ * If compression is disabled, original buffer is returned and MAX_ASSET_MB is still enforced.
  */
 export async function compressGlbBuffer(
   input: Buffer,
-  options?: { targetMaxBytes?: number }
+  options?: { targetMaxBytes?: number; enableCompression?: boolean }
 ): Promise<Buffer> {
   const maxBytes = options?.targetMaxBytes ?? getMaxAssetBytesFromEnv();
+  const enableCompression =
+    options?.enableCompression !== undefined ? options.enableCompression : isCompressionEnabledFromEnv();
 
   const originalBytes = input.byteLength;
   console.log(
     `[compress-asset] Original GLB size: ${(originalBytes / (1024 * 1024)).toFixed(2)} MB`
   );
 
-  if (!isCompressionEnabled()) {
-    console.log("[compress-asset] Compression disabled via ENABLE_GLTF_COMPRESSION; skipping transforms.");
+  if (!enableCompression) {
+    console.log("[compress-asset] Compression disabled; skipping transforms.");
     if (originalBytes > maxBytes) {
       throw new Error(
         `Model is too large (${(originalBytes / (1024 * 1024)).toFixed(

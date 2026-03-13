@@ -81,6 +81,8 @@ export type Generate3DPayload = {
   itemId: string;
   version: number;
   processingJobId: string;
+  /** Whether to run GLB compression (from Vercel env ENABLE_GLTF_COMPRESSION). */
+  enableCompression?: boolean;
 };
 
 export type DummyPayload = {

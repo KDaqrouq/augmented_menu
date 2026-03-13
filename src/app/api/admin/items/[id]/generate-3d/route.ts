@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { enqueueGenerate3D } from "@/lib/queue";
+import { isCompressionEnabledFromEnv } from "@/lib/compress-asset";
 
 /**
  * POST /api/admin/items/[id]/generate-3d
@@ -33,12 +34,15 @@ export async function POST(
     },
   });
 
+  const enableCompression = isCompressionEnabledFromEnv();
+
   try {
     await enqueueGenerate3D({
       type: "generate-3d",
       itemId,
       version,
       processingJobId: job.id,
+      enableCompression,
     });
   } catch (e) {
     await prisma.processingJob.update({

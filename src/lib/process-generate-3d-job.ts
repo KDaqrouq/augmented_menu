@@ -32,6 +32,7 @@ export async function processGenerate3DJob(payload: Generate3DPayload): Promise<
       photoUrls,
       measurementType: item.measurementType as MeasurementType,
       measurementValueCm: item.measurementValue,
+      enableCompression: payload.enableCompression,
     });
 
     const scaleFactor = computeScaleFactor(
