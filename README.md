@@ -41,5 +41,3 @@ QR-accessible web menu with AR item viewing at accurate real-world scale.
 - BullMQ + Redis (model-generation job queue)
 - Public routes: `/r/[slug]` (restaurant menu)
 - Admin routes: `/admin`
-
-See `docs/prd.md`, `docs/TECH_SPECS.md`, and `docs/IMPLEMENTATION_PLAN.md` for full product and implementation details.
