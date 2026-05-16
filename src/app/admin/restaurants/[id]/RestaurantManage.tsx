@@ -47,6 +47,8 @@ export function RestaurantManage({
   const [itemMeasurementValue, setItemMeasurementValue] = useState(28);
   const [itemCategoryId, setItemCategoryId] = useState("");
   const [itemLoading, setItemLoading] = useState(false);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   async function refresh() {
@@ -117,14 +119,69 @@ export function RestaurantManage({
     }
   }
 
+  async function deleteCategory(categoryId: string, name: string) {
+    if (!confirm(`Delete category "${name}"? Items in this category will become uncategorized.`)) {
+      return;
+    }
+    setError("");
+    setDeletingCategoryId(categoryId);
+    try {
+      const res = await fetch(
+        `/api/admin/restaurants/${restaurantId}/categories/${categoryId}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Failed to delete category");
+        return;
+      }
+      refresh();
+    } catch {
+      setError("Request failed");
+    } finally {
+      setDeletingCategoryId(null);
+    }
+  }
+
+  async function deleteItem(itemId: string, name: string) {
+    if (!confirm(`Delete item "${name}"? This cannot be undone.`)) {
+      return;
+    }
+    setError("");
+    setDeletingItemId(itemId);
+    try {
+      const res = await fetch(`/api/admin/items/${itemId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Failed to delete item");
+        return;
+      }
+      refresh();
+    } catch {
+      setError("Request failed");
+    } finally {
+      setDeletingItemId(null);
+    }
+  }
+
   return (
     <div className="mt-8 space-y-8">
       <div>
         <h2 className="text-lg font-semibold">Categories</h2>
-        <ul className="mt-2 list-disc pl-5">
+        <ul className="mt-2 space-y-1">
           {categories.map((c) => (
-            <li key={c.id}>
-              {c.name} (sort: {c.sortOrder})
+            <li key={c.id} className="flex items-center gap-2">
+              <span>
+                {c.name} (sort: {c.sortOrder})
+              </span>
+              <button
+                type="button"
+                onClick={() => deleteCategory(c.id, c.name)}
+                disabled={deletingCategoryId === c.id}
+                className="text-sm text-red-600 hover:underline disabled:opacity-50"
+              >
+                {deletingCategoryId === c.id ? "Deleting…" : "Delete"}
+              </button>
             </li>
           ))}
         </ul>
@@ -173,6 +230,14 @@ export function RestaurantManage({
               >
                 Edit
               </Link>
+              <button
+                type="button"
+                onClick={() => deleteItem(item.id, item.name)}
+                disabled={deletingItemId === item.id}
+                className="text-sm text-red-600 hover:underline disabled:opacity-50"
+              >
+                {deletingItemId === item.id ? "Deleting…" : "Delete"}
+              </button>
             </li>
           ))}
         </ul>

@@ -35,6 +35,7 @@ export function EditItemForm({
   const [measurementType, setMeasurementType] = useState(initial.measurementType);
   const [measurementValue, setMeasurementValue] = useState(initial.measurementValue);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
@@ -65,6 +66,28 @@ export function EditItemForm({
       setError("Request failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Delete item "${name}"? This cannot be undone.`)) {
+      return;
+    }
+    setError("");
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/items/${itemId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Failed to delete");
+        return;
+      }
+      router.push(`/admin/restaurants/${restaurantId}`);
+      router.refresh();
+    } catch {
+      setError("Request failed");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -132,10 +155,10 @@ export function EditItemForm({
         />
       </div>
       {error && <p className="text-red-600">{error}</p>}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || deleting}
           className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {loading ? "Saving…" : "Save"}
@@ -146,6 +169,14 @@ export function EditItemForm({
         >
           Cancel
         </Link>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={loading || deleting}
+          className="ml-auto rounded border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50 disabled:opacity-50"
+        >
+          {deleting ? "Deleting…" : "Delete item"}
+        </button>
       </div>
     </form>
   );

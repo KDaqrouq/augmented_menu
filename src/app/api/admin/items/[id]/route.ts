@@ -80,3 +80,23 @@ export async function PATCH(
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 }
+
+/**
+ * DELETE /api/admin/items/[id]
+ */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  try {
+    await prisma.menuItem.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (e: unknown) {
+    const msg =
+      e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2025"
+        ? "Item not found"
+        : "Failed to delete item";
+    return NextResponse.json({ error: msg }, { status: 400 });
+  }
+}
