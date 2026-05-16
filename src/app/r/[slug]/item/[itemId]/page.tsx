@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { isIOSUserAgent } from "@/lib/device";
 import { ItemViewTracker } from "./ItemViewTracker";
+import { ViewInARButton } from "./ViewInARButton";
 
 export default async function ItemDetailPage({
   params,
@@ -21,9 +24,19 @@ export default async function ItemDetailPage({
     include: {
       media: { orderBy: { sortOrder: "asc" } },
       category: { select: { name: true } },
+      assets: { orderBy: { version: "desc" }, take: 1 },
     },
   });
   if (!item) notFound();
+
+  const asset = item.assets[0];
+  const usdzUrl =
+    asset?.usdzUrl != null
+      ? `${asset.usdzUrl}${asset.usdzUrl.includes("?") ? "&" : "?"}v=${asset.version}`
+      : undefined;
+
+  const userAgent = (await headers()).get("user-agent") ?? "";
+  const isIOS = isIOSUserAgent(userAgent);
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -70,12 +83,13 @@ export default async function ItemDetailPage({
         )}
 
         <div className="mt-8">
-          <Link
-            href={`/r/${slug}/item/${itemId}/ar`}
-            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700"
-          >
-            View in AR
-          </Link>
+          <ViewInARButton
+            slug={slug}
+            itemId={itemId}
+            restaurantId={restaurant.id}
+            isIOS={isIOS}
+            usdzUrl={usdzUrl}
+          />
         </div>
       </div>
     </main>
