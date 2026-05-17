@@ -65,8 +65,10 @@ export const tripoModelGenerator: ModelGenerator = {
       throw new Error("measurementType and measurementValueCm are required for Tripo generation");
     }
 
-    const { glbUrl: tripoGlbUrl, baseTaskId } = await generateFromImages(photoUrls, {
+    const { glbUrl: tripoGlbUrl, finalTaskId } = await generateFromImages(photoUrls, {
       timeoutMs: 300000,
+      optimize: true,
+      faceLimit: 5000,
     });
 
     const bucket = getSupabaseStorageBucket();
@@ -107,11 +109,11 @@ export const tripoModelGenerator: ModelGenerator = {
 
     let usdzUrl: string | null = null;
     try {
-      // Ask Tripo to convert the base model task to USDZ, using the same
-      // scaleFactor we apply in WebXR so Quick Look size matches.
-      const tripoUsdzUrl = await convertModelToUsdZ(baseTaskId, {
+      // Convert the optimized (low-poly) task to USDZ with mobile-friendly settings.
+      const tripoUsdzUrl = await convertModelToUsdZ(finalTaskId, {
         timeoutMs: 300000,
         scaleFactor,
+        faceLimit: 5000,
       });
 
       if (tripoUsdzUrl) {

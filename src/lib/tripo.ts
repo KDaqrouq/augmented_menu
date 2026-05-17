@@ -148,14 +148,24 @@ export async function createMultiviewToModelTask(
 }
 
 /**
- * Create a convert_model task to turn an existing model into USDZ.
+ * Reduce polygon count after high-poly multiview generation (Smart LowPoly).
  */
-async function createConvertToUsdZTask(originalTaskId: string): Promise<string> {
+export async function createHighpolyToLowpolyTask(
+  originalTaskId: string,
+  options: {
+    faceLimit?: number;
+    quad?: boolean;
+    bake?: boolean;
+  } = {}
+): Promise<string> {
   const body = {
-    type: "convert_model" as const,
-    format: "USDZ" as const,
+    type: "highpoly_to_lowpoly" as const,
     original_model_task_id: originalTaskId,
+    face_limit: options.faceLimit ?? 5000,
+    quad: options.quad ?? false,
+    bake: options.bake ?? true,
   };
+
   return postTask(body);
 }
 
@@ -229,40 +239,61 @@ export async function waitForTask(
 }
 
 /**
- * Full flow (GLB only):
+ * Full flow (GLB):
  * - Requires at least 4 images (multiview_to_model).
+ * - Optionally runs highpoly_to_lowpoly to reduce polygon count / file size.
  *
- * Returns the primary GLB URL and the base task id so callers can
- * optionally run convert_model (e.g. to USDZ) with additional options
- * like scale_factor.
+ * Returns the primary GLB URL, base task id, and final task id (low-poly when optimized)
+ * so callers can run convert_model (e.g. to USDZ) on the optimized mesh.
  */
 export async function generateFromImages(
   imageUrls: string[],
-  options?: { timeoutMs?: number }
-): Promise<{ glbUrl: string; baseTaskId: string }> {
+  options: {
+    timeoutMs?: number;
+    optimize?: boolean;
+    faceLimit?: number;
+  } = {}
+): Promise<{ glbUrl: string; baseTaskId: string; finalTaskId: string }> {
   if (imageUrls.length < 4) {
     throw new Error(
       "At least 4 image URLs are required for 3D generation; first 4 must be [front, left, back, right]"
     );
   }
 
-  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  // 1) Base model (GLB) task: always use multiview_to_model with 4+ images.
+  // 1) Generate base model
   const baseTaskId = await createMultiviewToModelTask(imageUrls);
+  await waitForTask(baseTaskId, { timeoutMs });
 
-  const baseOutput = await waitForTask(baseTaskId, { timeoutMs });
+  let finalTaskId = baseTaskId;
+
+  // 2) Optional low-poly optimization
+  if (options.optimize ?? true) {
+    const lowpolyTaskId = await createHighpolyToLowpolyTask(baseTaskId, {
+      faceLimit: options.faceLimit ?? 5000,
+      quad: false,
+      bake: true,
+    });
+
+    await waitForTask(lowpolyTaskId, { timeoutMs });
+    finalTaskId = lowpolyTaskId;
+  }
+
+  // 3) Get final model output
+  const finalOutput = await waitForTask(finalTaskId, { timeoutMs });
+
   const glbUrl =
-    baseOutput.pbrModelUrl ??
-    baseOutput.modelUrl ??
-    baseOutput.baseModelUrl ??
+    finalOutput.pbrModelUrl ??
+    finalOutput.modelUrl ??
+    finalOutput.baseModelUrl ??
     null;
 
   if (!glbUrl) {
-    throw new Error(`Tripo task ${baseTaskId} succeeded but no model URL in output`);
+    throw new Error(`Tripo task ${finalTaskId} succeeded but no model URL in output`);
   }
 
-  return { glbUrl, baseTaskId };
+  return { glbUrl, baseTaskId, finalTaskId };
 }
 
 /**
@@ -272,7 +303,11 @@ export async function generateFromImages(
  */
 export async function convertModelToUsdZ(
   originalTaskId: string,
-  options: { timeoutMs?: number; scaleFactor?: number } = {}
+  options: {
+    timeoutMs?: number;
+    scaleFactor?: number;
+    faceLimit?: number;
+  } = {}
 ): Promise<string | null> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -280,8 +315,10 @@ export async function convertModelToUsdZ(
     type: "convert_model" as const,
     format: "USDZ" as const,
     original_model_task_id: originalTaskId,
-    // Keep USDZ texture resolution reasonable for mobile.
-    texture_size: 2048,
+    texture_size: 1024,
+    texture_format: "JPEG",
+    face_limit: options.faceLimit ?? 5000,
+    bake: true,
   };
 
   if (typeof options.scaleFactor === "number" && Number.isFinite(options.scaleFactor)) {
