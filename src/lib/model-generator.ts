@@ -68,7 +68,7 @@ export const tripoModelGenerator: ModelGenerator = {
     const { glbUrl: tripoGlbUrl, finalTaskId } = await generateFromImages(photoUrls, {
       timeoutMs: 300000,
       optimize: true,
-      faceLimit: 5000,
+      faceLimit: 15000,
     });
 
     const bucket = getSupabaseStorageBucket();
@@ -113,7 +113,7 @@ export const tripoModelGenerator: ModelGenerator = {
       const tripoUsdzUrl = await convertModelToUsdZ(finalTaskId, {
         timeoutMs: 300000,
         scaleFactor,
-        faceLimit: 5000,
+        faceLimit: 15000,
       });
 
       if (tripoUsdzUrl) {

@@ -161,7 +161,7 @@ export async function createHighpolyToLowpolyTask(
   const body = {
     type: "highpoly_to_lowpoly" as const,
     original_model_task_id: originalTaskId,
-    face_limit: options.faceLimit ?? 5000,
+    face_limit: options.faceLimit ?? 15000,
     quad: options.quad ?? false,
     bake: options.bake ?? true,
   };
@@ -271,7 +271,7 @@ export async function generateFromImages(
   // 2) Optional low-poly optimization
   if (options.optimize ?? true) {
     const lowpolyTaskId = await createHighpolyToLowpolyTask(baseTaskId, {
-      faceLimit: options.faceLimit ?? 5000,
+      faceLimit: options.faceLimit ?? 15000,
       quad: false,
       bake: true,
     });
@@ -315,9 +315,9 @@ export async function convertModelToUsdZ(
     type: "convert_model" as const,
     format: "USDZ" as const,
     original_model_task_id: originalTaskId,
-    texture_size: 1024,
+    texture_size: 2048,
     texture_format: "JPEG",
-    face_limit: options.faceLimit ?? 5000,
+    face_limit: options.faceLimit ?? 15000,
     bake: true,
   };
 
