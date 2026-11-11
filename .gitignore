@@ -34,6 +34,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local docs (not tracked), except the README screenshots
+# local docs (not tracked), except the README screenshots and metrics
 /docs/*
 !/docs/screenshots/
+!/docs/metrics.md
