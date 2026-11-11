@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { fillDailySeries } from "@/lib/daily-series";
 
 const RANGE_DAYS: Record<string, number | null> = { "7": 7, "30": 30, "90": 90, all: null };
 
@@ -91,7 +92,11 @@ export async function GET(request: Request) {
       })),
       byDeviceType: Object.fromEntries(byDeviceType.map((r) => [r.key, r.count])),
       byArMode: Object.fromEntries(byArMode.map((r) => [r.key, r.count])),
-      daily: daily.map((d) => ({ ...d, day: d.day.toISOString().slice(0, 10) })),
+      daily: fillDailySeries(
+        daily.map((d) => ({ ...d, day: d.day.toISOString().slice(0, 10) })),
+        new Date(),
+        since
+      ),
     });
   } catch (e) {
     console.error("[analytics] Failed to fetch:", e);

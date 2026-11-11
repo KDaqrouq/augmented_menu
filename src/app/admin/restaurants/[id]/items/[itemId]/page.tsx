@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { buttonClass } from "@/components/ui";
 import { ExternalIcon } from "@/components/icons";
 import { AdminShell } from "@/app/admin/AdminShell";
+import { QrCodeCard } from "@/app/admin/QrCodeCard";
+import { slugify } from "@/lib/slug";
 import { EditItemForm } from "./EditItemForm";
 import { ItemPhotosSection } from "./ItemPhotosSection";
 import { ItemGenerate3DSection } from "./ItemGenerate3DSection";
@@ -74,13 +76,21 @@ export default async function AdminEditItemPage({ params }: Props) {
             }}
           />
         </div>
-        <div className="lg:sticky lg:top-20">
+        <div className="space-y-6 lg:sticky lg:top-20">
           <ItemGenerate3DSection
             itemId={item.id}
             initialStatus={item.arAssetStatus}
             initialPhotoCount={item.media.length}
             previewPath={`${publicPath}/ar`}
           />
+          {item.isAvailable && (
+            <QrCodeCard
+              path={publicPath}
+              fileName={`${item.restaurant.slug}-${slugify(item.name) || "dish"}-qr`}
+              title="Dish QR code"
+              description="Opens this dish directly, handy for table cards or specials boards."
+            />
+          )}
         </div>
       </div>
     </AdminShell>

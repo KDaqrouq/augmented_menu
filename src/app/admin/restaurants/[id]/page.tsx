@@ -5,6 +5,7 @@ import { buttonClass } from "@/components/ui";
 import { ExternalIcon } from "@/components/icons";
 import { AdminShell } from "../../AdminShell";
 import { CopyLinkButton } from "../../CopyButton";
+import { QrCodeCard } from "../../QrCodeCard";
 import { CategoriesPanel } from "./CategoriesPanel";
 import { ItemsPanel } from "./ItemsPanel";
 import { RestaurantSettings } from "./RestaurantSettings";
@@ -85,6 +86,12 @@ export default async function AdminRestaurantPage({ params }: Props) {
           />
         </div>
         <aside className="space-y-6">
+          <QrCodeCard
+            path={menuPath}
+            fileName={`${restaurant.slug}-menu-qr`}
+            title="Menu QR code"
+            description="Print it for tables or the window. It opens the full menu."
+          />
           <CategoriesPanel
             restaurantId={restaurant.id}
             categories={restaurant.categories.map((c) => ({ id: c.id, name: c.name, itemCount: c._count.items }))}

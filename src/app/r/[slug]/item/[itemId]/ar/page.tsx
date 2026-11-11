@@ -6,7 +6,7 @@ import { getPublicItem } from "@/lib/menu";
 import { getMobilePlatform } from "@/lib/device";
 import { buttonClass } from "@/components/ui";
 import { ArrowLeftIcon, CubeIcon } from "@/components/icons";
-import { ARViewer } from "./ARViewer";
+import { ARViewerClient } from "./ARViewerClient";
 import { ARErrorBoundary } from "./ARErrorBoundary";
 
 type Props = { params: Promise<{ slug: string; itemId: string }> };
@@ -57,7 +57,7 @@ export default async function ARPage({ params }: Props) {
         </p>
       </div>
       <ARErrorBoundary itemHref={itemHref} glbUrl={asset.glbUrl}>
-        <ARViewer
+        <ARViewerClient
           restaurantId={restaurant.id}
           itemId={item.id}
           itemName={item.name}

@@ -210,11 +210,11 @@ function Breakdown({ data, labels }: { data: Record<string, number>; labels?: Re
 
 /** Stacked daily bars: menu views (light), dish views (mid), 3D/AR opens (brand). */
 function DailyChart({ daily }: { daily: Stats["daily"] }) {
-  if (daily.length === 0) return <p className="px-5 py-6 text-sm text-stone-500">No data yet.</p>;
+  if (!daily.some((d) => d.menuViews + d.itemViews + d.arOpens > 0)) return <p className="px-5 py-6 text-sm text-stone-500">No data yet.</p>;
   const max = Math.max(...daily.map((d) => d.menuViews + d.itemViews + d.arOpens), 1);
   return (
     <div className="p-5">
-      <div className="flex h-40 items-end gap-1">
+      <div className={cn("flex h-40 items-end", daily.length > 60 ? "gap-px" : "gap-1")}>
         {daily.map((d) => {
           const total = d.menuViews + d.itemViews + d.arOpens;
           return (
@@ -223,7 +223,7 @@ function DailyChart({ daily }: { daily: Stats["daily"] }) {
               className="group relative flex h-full min-w-0 flex-1 flex-col justify-end"
               title={`${d.day}: ${d.menuViews} menu views, ${d.itemViews} dish views, ${d.arOpens} 3D/AR opens`}
             >
-              <div className="flex flex-col overflow-hidden rounded-t-md" style={{ height: `${(total / max) * 100}%` }}>
+              <div className="mx-auto flex w-full max-w-10 flex-col overflow-hidden rounded-t-md" style={{ height: `${(total / max) * 100}%` }}>
                 <div className="bg-brand-500" style={{ flexGrow: d.arOpens }} />
                 <div className="bg-brand-300" style={{ flexGrow: d.itemViews }} />
                 <div className="bg-stone-200" style={{ flexGrow: d.menuViews }} />
