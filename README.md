@@ -43,6 +43,20 @@ For the restaurant:
 
 A couple of things that took some care. Tripo charges per task, so every task id is saved as soon as it's created. If the worker crashes or times out, the retry picks the old task back up instead of paying for a new one. Each generation also gets its own version number, so if an old job finishes late it can't overwrite a newer model.
 
+## Numbers
+
+I measured these against the real database and storage:
+
+| What | Result |
+| --- | --- |
+| Model size with the low-poly step and quantization (same dish) | 41 MB to 1.9 MB, 95% smaller |
+| glTF quantization on its own | about 21% smaller (median of 7 models) |
+| Photos to AR-ready model | median 3.9 minutes, 9 of 9 jobs succeeded |
+| Mobile menu download | 3.4 MB to 260 KB, main content shows 33% sooner |
+| Web and iPhone models | same size within 0.35% |
+
+How each one was measured, the sample sizes and how to rerun them are in [docs/metrics.md](docs/metrics.md).
+
 ## Tech stack
 
 - Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS
