@@ -1,59 +1,97 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { AdminLogoutButton } from "../../AdminLogoutButton";
-import { RestaurantManage } from "./RestaurantManage";
+import { buttonClass } from "@/components/ui";
+import { ExternalIcon } from "@/components/icons";
+import { AdminShell } from "../../AdminShell";
+import { CopyLinkButton } from "../../CopyButton";
+import { CategoriesPanel } from "./CategoriesPanel";
+import { ItemsPanel } from "./ItemsPanel";
+import { RestaurantSettings } from "./RestaurantSettings";
 
-export default async function AdminRestaurantPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+type Props = { params: Promise<{ id: string }> };
+
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
+  const r = await prisma.restaurant.findUnique({ where: { id }, select: { name: true } });
+  return { title: r?.name ?? "Restaurant" };
+}
+
+export default async function AdminRestaurantPage({ params }: Props) {
   const { id } = await params;
   const restaurant = await prisma.restaurant.findUnique({
     where: { id },
     include: {
-      categories: { orderBy: { sortOrder: "asc" } },
+      categories: {
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        include: { _count: { select: { items: true } } },
+      },
       items: {
-        include: {
-          category: { select: { id: true, name: true } },
-          media: { orderBy: { sortOrder: "asc" }, take: 1 },
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          isAvailable: true,
+          measurementType: true,
+          measurementValue: true,
+          arAssetStatus: true,
+          categoryId: true,
+          media: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
+          _count: { select: { media: true, assets: true } },
         },
       },
     },
   });
   if (!restaurant) notFound();
 
-  return (
-    <main className="min-h-screen p-8">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link href="/admin" className="text-blue-600 underline">
-            ← Admin
-          </Link>
-          <h1 className="text-2xl font-bold">{restaurant.name}</h1>
-        </div>
-        <AdminLogoutButton />
-      </div>
-      <p className="mt-1 text-gray-600">
-        Slug: <code className="font-mono">{restaurant.slug}</code>
-      </p>
-      <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-3">
-        <p className="text-sm font-medium text-gray-700">QR / Menu link (share this URL)</p>
-        <p className="mt-1 font-mono text-sm">
-          /r/{restaurant.slug}
-        </p>
-        <p className="mt-1 text-xs text-gray-500">
-          Full URL: use your site origin + /r/{restaurant.slug}
-        </p>
-      </div>
+  const menuPath = `/r/${restaurant.slug}`;
 
-      <RestaurantManage
-        restaurantId={restaurant.id}
-        slug={restaurant.slug}
-        categories={restaurant.categories}
-        items={restaurant.items}
-      />
-    </main>
+  return (
+    <AdminShell
+      active="restaurants"
+      crumbs={[{ label: "Restaurants", href: "/admin" }, { label: restaurant.name }]}
+      title={restaurant.name}
+      description={<span className="font-mono">{menuPath}</span>}
+      actions={
+        <>
+          <CopyLinkButton path={menuPath} label="Copy menu link" />
+          <a href={menuPath} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary", "sm")}>
+            <ExternalIcon size={16} /> Open menu
+          </a>
+        </>
+      }
+    >
+      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+        <div className="min-w-0 space-y-6">
+          <ItemsPanel
+            restaurantId={restaurant.id}
+            categories={restaurant.categories.map((c) => ({ id: c.id, name: c.name }))}
+            items={restaurant.items.map((i) => ({
+              id: i.id,
+              name: i.name,
+              price: i.price,
+              isAvailable: i.isAvailable,
+              measurementType: i.measurementType,
+              measurementValue: i.measurementValue,
+              arAssetStatus: i.arAssetStatus,
+              categoryId: i.categoryId,
+              thumbnail: i.media[0]?.url ?? null,
+              photoCount: i._count.media,
+              hasModel: i._count.assets > 0,
+            }))}
+          />
+        </div>
+        <aside className="space-y-6">
+          <CategoriesPanel
+            restaurantId={restaurant.id}
+            categories={restaurant.categories.map((c) => ({ id: c.id, name: c.name, itemCount: c._count.items }))}
+          />
+          <RestaurantSettings restaurantId={restaurant.id} name={restaurant.name} slug={restaurant.slug} />
+        </aside>
+      </div>
+    </AdminShell>
   );
 }

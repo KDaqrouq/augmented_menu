@@ -1,21 +1,25 @@
 /**
- * Model generator abstraction (TECH_SPECS §1).
+ * Model generator abstraction.
  * TripoModelGenerator: image-to-3D via Tripo API, uploads to our storage, returns GLB/USDZ URLs and bbox.
  */
 
-import { convertModelToUsdZ, generateFromImages } from "./tripo";
+import { convertModelToUsdZ, generateFromImages, type GenerateResume, type OnTaskCreated } from "./tripo";
 import { getGlbBboxFromBuffer } from "./glb-bbox";
-import { getSupabaseStorageBucket, uploadAssetFile } from "./supabase";
-import { compressGlbBuffer, logAssetSize, getMaxAssetBytes } from "./compress-asset";
+import { getSupabaseStorageBucket, itemAssetVersionPrefix, uploadAssetFile } from "./supabase";
+import { bakeRealWorldScale, compressGlbBuffer, logAssetSize, getMaxAssetBytes } from "./compress-asset";
 import { computeScaleFactor, type MeasurementType } from "./scale";
 
 export type ModelGeneratorResult = {
   glbUrl: string;
   usdzUrl?: string | null;
+  /** GLB with real-world scale baked in, for Android Scene Viewer (which has no scale parameter). */
+  arGlbUrl?: string | null;
   units: string;
   bboxX: number;
   bboxY: number;
   bboxZ: number;
+  /** Scale baked into the USDZ and the Android GLB. */
+  scaleFactor: number;
 };
 
 export type ModelGeneratorContext = {
@@ -24,24 +28,19 @@ export type ModelGeneratorContext = {
   measurementValueCm: number;
   /** When provided, overrides env for GLB compression (from job payload, set on Vercel). */
   enableCompression?: boolean;
+  /** Tripo task ids from an earlier attempt of the same job. */
+  resume?: GenerateResume & { usdzTaskId?: string | null };
+  onTaskCreated?: OnTaskCreated;
 };
 
 export interface ModelGenerator {
-  generate(
-    itemId: string,
-    version: number,
-    context?: ModelGeneratorContext
-  ): Promise<ModelGeneratorResult>;
+  generate(itemId: string, version: number, context: ModelGeneratorContext): Promise<ModelGeneratorResult>;
 }
 
-/**
- * Download a URL to a Buffer and log its size.
- */
 async function downloadToBuffer(url: string, label: string): Promise<Buffer> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Download failed ${res.status}: ${url}`);
-  const ab = await res.arrayBuffer();
-  const buf = Buffer.from(ab);
+  const buf = Buffer.from(await res.arrayBuffer());
   logAssetSize(label, buf);
   return buf;
 }
@@ -51,9 +50,7 @@ async function downloadToBuffer(url: string, label: string): Promise<Buffer> {
  */
 export const tripoModelGenerator: ModelGenerator = {
   async generate(itemId, version, context): Promise<ModelGeneratorResult> {
-    const photoUrls = context?.photoUrls ?? [];
-    const measurementType = context?.measurementType;
-    const measurementValueCm = context?.measurementValueCm;
+    const { photoUrls, measurementType, measurementValueCm } = context;
 
     if (photoUrls.length < 4) {
       throw new Error(
@@ -61,30 +58,22 @@ export const tripoModelGenerator: ModelGenerator = {
       );
     }
 
-    if (!measurementType || typeof measurementValueCm !== "number") {
-      throw new Error("measurementType and measurementValueCm are required for Tripo generation");
-    }
-
     const { glbUrl: tripoGlbUrl, finalTaskId } = await generateFromImages(photoUrls, {
       timeoutMs: 300000,
       optimize: true,
       faceLimit: 15000,
+      resume: context.resume,
+      onTaskCreated: context.onTaskCreated,
     });
 
     const bucket = getSupabaseStorageBucket();
-    const basePath = `assets/items/${itemId}/v${version}`;
-    const glbPath = `${basePath}/model.glb`;
-    const usdzPath = `${basePath}/model.usdz`;
+    const basePath = itemAssetVersionPrefix(itemId, version);
+    const maxBytes = getMaxAssetBytes();
 
-    // Download original GLB from Tripo and log size.
     const originalGlbBuffer = await downloadToBuffer(tripoGlbUrl, "Tripo GLB (original)");
 
-    // Compute bbox from original (unquantized) GLB so scale is correct in AR.
+    // Bbox from the original (unquantized) GLB so scale is correct in AR.
     const bbox = await getGlbBboxFromBuffer(originalGlbBuffer);
-
-    // Compute scale factor once we know bbox & measurement so we can:
-    // - store it in MenuItemAsset (via process-generate-3d-job.ts)
-    // - and pass it to Tripo's convert_model scale_factor for USDZ.
     const scaleFactor = computeScaleFactor(
       measurementType,
       measurementValueCm,
@@ -93,65 +82,67 @@ export const tripoModelGenerator: ModelGenerator = {
       bbox.bboxZ
     );
 
-    // Compress GLB before upload; enforce size cap. enableCompression from job payload (set on Vercel).
-    const maxBytes = getMaxAssetBytes();
     const compressedGlbBuffer = await compressGlbBuffer(originalGlbBuffer, {
       targetMaxBytes: maxBytes,
-      enableCompression: context?.enableCompression,
+      enableCompression: context.enableCompression,
     });
 
-    const glbUrl = await uploadAssetFile(
-      bucket,
-      glbPath,
-      compressedGlbBuffer,
-      "model/gltf-binary"
-    );
+    const glbUrl = await uploadAssetFile(bucket, `${basePath}/model.glb`, compressedGlbBuffer, "model/gltf-binary");
+
+    // Android Scene Viewer cannot be told a scale, so give it a copy with the size baked in.
+    let arGlbUrl: string | null = null;
+    try {
+      const arGlb = await bakeRealWorldScale(compressedGlbBuffer, scaleFactor);
+      if (arGlb.byteLength <= maxBytes) {
+        arGlbUrl = await uploadAssetFile(bucket, `${basePath}/model-ar.glb`, arGlb, "model/gltf-binary");
+      }
+    } catch (err) {
+      console.warn(
+        "[tripoModelGenerator] Could not build the Android AR GLB; Android will use the web viewer:",
+        err instanceof Error ? err.message : String(err)
+      );
+    }
 
     let usdzUrl: string | null = null;
     try {
-      // Convert the optimized (low-poly) task to USDZ with mobile-friendly settings.
+      // Convert the optimized (low-poly) task to USDZ, pre-scaled to real-world size.
       const tripoUsdzUrl = await convertModelToUsdZ(finalTaskId, {
         timeoutMs: 300000,
         scaleFactor,
         faceLimit: 15000,
+        existingTaskId: context.resume?.lowpolyTaskId === finalTaskId ? context.resume?.usdzTaskId : null,
+        onTaskCreated: context.onTaskCreated,
       });
 
       if (tripoUsdzUrl) {
         const usdzBuffer = await downloadToBuffer(tripoUsdzUrl, "Tripo USDZ (scaled via convert_model)");
-        const maxBytesUsdz = getMaxAssetBytes();
-        if (usdzBuffer.byteLength > maxBytesUsdz) {
+        if (usdzBuffer.byteLength > maxBytes) {
           console.warn(
-            `[compress-asset] USDZ too large after Tripo generation: ${(usdzBuffer.byteLength / (1024 * 1024)).toFixed(
-              2
-            )} MB (cap ${(maxBytesUsdz / (1024 * 1024)).toFixed(
-              2
-            )} MB). Skipping USDZ upload; iOS will use 3D fallback.`
+            `[compress-asset] USDZ too large: ${(usdzBuffer.byteLength / (1024 * 1024)).toFixed(2)} MB (cap ${(
+              maxBytes /
+              (1024 * 1024)
+            ).toFixed(2)} MB). Skipping USDZ upload; iOS will use 3D fallback.`
           );
-          usdzUrl = null;
         } else {
-          usdzUrl = await uploadAssetFile(
-            bucket,
-            usdzPath,
-            usdzBuffer,
-            "model/vnd.usdz+zip"
-          );
+          usdzUrl = await uploadAssetFile(bucket, `${basePath}/model.usdz`, usdzBuffer, "model/vnd.usdz+zip");
         }
       }
     } catch (err) {
       console.warn(
-        "[tripoModelGenerator] USDZ conversion via convert_model failed; continuing with GLB only:",
+        "[tripoModelGenerator] USDZ conversion failed; continuing with GLB only:",
         err instanceof Error ? err.message : String(err)
       );
-      usdzUrl = null;
     }
 
     return {
       glbUrl,
       usdzUrl,
+      arGlbUrl,
       units: "meters",
       bboxX: bbox.bboxX,
       bboxY: bbox.bboxY,
       bboxZ: bbox.bboxZ,
+      scaleFactor,
     };
   },
 };

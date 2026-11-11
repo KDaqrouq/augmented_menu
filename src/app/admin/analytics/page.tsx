@@ -1,26 +1,19 @@
-import Link from "next/link";
-import { AdminLogoutButton } from "../AdminLogoutButton";
+import type { Metadata } from "next";
+import { prisma } from "@/lib/db";
+import { AdminShell } from "../AdminShell";
 import { AnalyticsDashboard } from "./AnalyticsDashboard";
 
-export default function AdminAnalyticsPage() {
-  return (
-    <main className="min-h-screen p-8">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold">Analytics</h1>
-        <div className="flex items-center gap-4">
-          <Link className="text-blue-600 underline" href="/admin">
-            ← Dashboard
-          </Link>
-          <AdminLogoutButton />
-        </div>
-      </div>
-      <p className="mt-2 text-gray-600">
-        Restaurant-level stats, top items, device breakdown.
-      </p>
+export const metadata: Metadata = { title: "Analytics" };
+export const dynamic = "force-dynamic";
 
-      <div className="mt-6">
-        <AnalyticsDashboard />
-      </div>
-    </main>
+export default async function AdminAnalyticsPage() {
+  const restaurants = await prisma.restaurant.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+  return (
+    <AdminShell active="analytics" title="Analytics" description="How diners use your menus and AR.">
+      <AnalyticsDashboard restaurants={restaurants} />
+    </AdminShell>
   );
 }

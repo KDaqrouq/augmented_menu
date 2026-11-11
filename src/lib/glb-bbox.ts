@@ -1,6 +1,5 @@
 /**
- * Compute axis-aligned bounding box of a GLB from its URL (in meters).
- * Used when Tripo does not return bbox; required for scale.ts.
+ * Compute the axis-aligned bounding box of a GLB (in meters); required for scale.ts.
  *
  * Uses glTF-Transform getBounds() so the bbox accounts for node transforms
  * (translation, rotation, scale). Tripo and others often apply a root node
@@ -43,19 +42,5 @@ async function computeBboxFromDocument(buffer: Buffer): Promise<GlbBbox> {
  * Use this in the worker so bbox is in real meter space, not quantized.
  */
 export async function getGlbBboxFromBuffer(buffer: Buffer): Promise<GlbBbox> {
-  return await computeBboxFromDocument(buffer);
-}
-
-/**
- * Load GLB from URL and return bounding box dimensions in meters.
- * Assumes GLB is in meters. Prefer getGlbBboxFromBuffer for pipeline use.
- */
-export async function getGlbBboxFromUrl(glbUrl: string): Promise<GlbBbox> {
-  const res = await fetch(glbUrl);
-  if (!res.ok) {
-    throw new Error(`Failed to download GLB for bbox: ${res.status} ${glbUrl}`);
-  }
-  const ab = await res.arrayBuffer();
-  const buffer = Buffer.from(ab);
   return await computeBboxFromDocument(buffer);
 }

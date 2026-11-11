@@ -1,12 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { slugify } from "@/lib/slug";
+import { Alert, Field, buttonClass, inputClass } from "@/components/ui";
 
-export function AddRestaurantForm({ onAdded }: { onAdded?: () => void }) {
+export function AddRestaurantForm() {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const [slugEdited, setSlugEdited] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const effectiveSlug = slugify(slugEdited ? slug : name);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -16,17 +23,15 @@ export function AddRestaurantForm({ onAdded }: { onAdded?: () => void }) {
       const res = await fetch("/api/admin/restaurants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, slug: slug || name.toLowerCase().replace(/\s+/g, "-") }),
+        body: JSON.stringify({ name, slug: effectiveSlug }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error ?? "Failed to create");
         return;
       }
-      setName("");
-      setSlug("");
-      onAdded?.();
-      if (typeof window !== "undefined") window.location.reload();
+      router.push(`/admin/restaurants/${data.id}`);
+      router.refresh();
     } catch {
       setError("Request failed");
     } finally {
@@ -35,33 +40,41 @@ export function AddRestaurantForm({ onAdded }: { onAdded?: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-4 flex flex-wrap items-end gap-3 rounded border border-gray-200 p-3">
-      <div>
-        <label className="block text-sm font-medium text-gray-700">Name</label>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <Field label="Name" htmlFor="restaurant-name">
         <input
+          id="restaurant-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="mt-1 rounded border border-gray-300 px-2 py-1"
+          placeholder="Trattoria Roma"
+          className={inputClass}
           required
         />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700">Slug (URL)</label>
-        <input
-          value={slug}
-          onChange={(e) => setSlug(e.target.value)}
-          placeholder="e.g. my-place"
-          className="mt-1 rounded border border-gray-300 px-2 py-1"
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={loading}
-        className="rounded bg-green-600 px-3 py-1.5 text-white hover:bg-green-700 disabled:opacity-50"
+      </Field>
+      <Field
+        label="Menu URL"
+        htmlFor="restaurant-slug"
+        hint={
+          <>
+            Diners will open <span className="font-mono text-stone-700">/r/{effectiveSlug || "…"}</span>
+          </>
+        }
       >
-        {loading ? "Adding…" : "Add restaurant"}
+        <input
+          id="restaurant-slug"
+          value={slugEdited ? slug : effectiveSlug}
+          onChange={(e) => {
+            setSlugEdited(true);
+            setSlug(e.target.value);
+          }}
+          placeholder="trattoria-roma"
+          className={`${inputClass} font-mono`}
+        />
+      </Field>
+      {error && <Alert>{error}</Alert>}
+      <button type="submit" disabled={loading || !name.trim()} className={buttonClass("primary", "md", "w-full")}>
+        {loading ? "Creating…" : "Create restaurant"}
       </button>
-      {error && <p className="text-sm text-red-600">{error}</p>}
     </form>
   );
 }

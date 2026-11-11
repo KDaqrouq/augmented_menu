@@ -4,7 +4,7 @@ import { getAdminSession } from "@/lib/auth";
 /**
  * GET /api/admin/me
  * Protected admin route: returns 200 if authenticated, 401 otherwise.
- * Used to verify Checkpoint 1C (unauthenticated cannot access admin APIs).
+ * Lets clients check whether the admin session is still valid.
  */
 export async function GET() {
   const ok = await getAdminSession();

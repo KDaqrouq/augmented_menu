@@ -12,7 +12,7 @@ export async function POST() {
   try {
     const jobId = await enqueueDummyJob();
     return NextResponse.json({ ok: true, jobId });
-  } catch (e) {
+  } catch {
     return NextResponse.json(
       { error: "Queue not configured (REDIS_URL required)" },
       { status: 503 }

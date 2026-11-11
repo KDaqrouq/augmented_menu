@@ -1,4 +1,4 @@
-import { NodeIO } from "@gltf-transform/core";
+import { NodeIO, getBounds } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { dedup, prune, quantize } from "@gltf-transform/functions";
 
@@ -80,6 +80,37 @@ export async function compressGlbBuffer(
   }
 
   return Buffer.from(compressed);
+}
+
+/**
+ * Wrap every scene in a node that applies `scale` and sits the model on the ground:
+ * centered on X/Z with its lowest point at Y=0. Used for viewers that cannot be told
+ * a scale (Android Scene Viewer) and place the model's origin on the detected surface.
+ */
+export async function bakeRealWorldScale(input: Buffer, scale: number): Promise<Buffer> {
+  if (!(scale > 0) || !Number.isFinite(scale)) throw new Error(`Invalid scale factor: ${scale}`);
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+  const document = await io.readBinary(input);
+
+  for (const scene of document.getRoot().listScenes()) {
+    const children = scene.listChildren();
+    if (children.length === 0) continue;
+    const { min, max } = getBounds(scene);
+    const centerX = (min[0] + max[0]) / 2;
+    const centerZ = (min[2] + max[2]) / 2;
+
+    const wrapper = document
+      .createNode("RealWorldScale")
+      .setScale([scale, scale, scale])
+      .setTranslation([-centerX * scale, -min[1] * scale, -centerZ * scale]);
+    for (const child of children) {
+      scene.removeChild(child);
+      wrapper.addChild(child);
+    }
+    scene.addChild(wrapper);
+  }
+
+  return Buffer.from(await io.writeBinary(document));
 }
 
 /**

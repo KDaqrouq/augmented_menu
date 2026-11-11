@@ -1,79 +1,75 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import Link from "next/link";
-import { prisma } from "@/lib/db";
-import { computeScaleFactor } from "@/lib/scale";
-import type { MeasurementType } from "@prisma/client";
+import { getPublicItem } from "@/lib/menu";
+import { getMobilePlatform } from "@/lib/device";
+import { buttonClass } from "@/components/ui";
+import { ArrowLeftIcon, CubeIcon } from "@/components/icons";
 import { ARViewer } from "./ARViewer";
 import { ARErrorBoundary } from "./ARErrorBoundary";
 
-export default async function ARPage({
-  params,
-}: {
-  params: Promise<{ slug: string; itemId: string }>;
-}) {
+type Props = { params: Promise<{ slug: string; itemId: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug, itemId } = await params;
+  const data = await getPublicItem(slug, itemId);
+  return { title: data ? `${data.item.name} in 3D` : "3D view" };
+}
 
-  const restaurant = await prisma.restaurant.findUnique({
-    where: { slug },
-    select: { id: true, name: true, slug: true },
-  });
-  if (!restaurant) notFound();
+export default async function ARPage({ params }: Props) {
+  const { slug, itemId } = await params;
+  const data = await getPublicItem(slug, itemId);
+  if (!data) notFound();
+  const { restaurant, item, asset } = data;
+  const itemHref = `/r/${slug}/item/${itemId}`;
 
-  const item = await prisma.menuItem.findFirst({
-    where: { id: itemId, restaurantId: restaurant.id },
-    include: {
-      assets: { orderBy: { version: "desc" }, take: 1 },
-    },
-  });
-  if (!item) notFound();
-
-  const asset = item.assets[0];
   if (!asset) {
     return (
-      <main className="min-h-screen bg-gray-900 p-6 text-white">
-        <p className="mb-4">No 3D asset yet. Generate 3D in admin first.</p>
-        <Link href={`/r/${slug}/item/${itemId}`} className="text-blue-400 underline">
-          Back to item
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-stone-950 p-6 text-center text-white">
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10">
+          <CubeIcon size={28} />
+        </span>
+        <div>
+          <p className="text-lg font-semibold">3D view coming soon</p>
+          <p className="mt-1 text-sm text-stone-400">This dish doesn’t have a 3D model yet.</p>
+        </div>
+        <Link href={itemHref} className={buttonClass("secondary", "md")}>
+          Back to {item.name}
         </Link>
       </main>
     );
   }
 
-  const scaleFactor = computeScaleFactor(
-    item.measurementType as MeasurementType,
-    item.measurementValue,
-    asset.bboxX,
-    asset.bboxY,
-    asset.bboxZ
-  );
+  const platform = getMobilePlatform((await headers()).get("user-agent") ?? "");
 
   return (
-    <main className="min-h-screen bg-gray-900">
-      <div className="absolute left-0 top-0 z-10 flex items-center gap-3 p-3">
+    <main className="fixed inset-0 overflow-hidden bg-gradient-to-b from-stone-100 to-stone-300">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-3 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <Link
-          href={`/r/${slug}/item/${itemId}`}
-          className="rounded bg-gray-800 px-3 py-1.5 text-sm text-white hover:bg-gray-700"
+          href={itemHref}
+          className="pointer-events-auto inline-flex h-10 items-center gap-1 rounded-full bg-white/90 pl-2 pr-4 text-sm font-medium text-stone-800 shadow-lift backdrop-blur hover:bg-white"
         >
-          ← Back
+          <ArrowLeftIcon size={18} /> Back
         </Link>
+        <p className="truncate rounded-full bg-white/70 px-3 py-1.5 text-sm font-semibold text-stone-800 backdrop-blur">
+          {item.name}
+        </p>
       </div>
-      <ARErrorBoundary slug={slug} itemId={itemId}>
+      <ARErrorBoundary itemHref={itemHref} glbUrl={asset.glbUrl}>
         <ARViewer
           restaurantId={restaurant.id}
           itemId={item.id}
-          glbUrl={`${asset.glbUrl}${asset.glbUrl.includes("?") ? "&" : "?"}v=${asset.version}`}
-        usdzUrl={
-          asset.usdzUrl
-            ? `${asset.usdzUrl}${asset.usdzUrl.includes("?") ? "&" : "?"}v=${asset.version}`
-            : undefined
-        }
-        scaleFactor={scaleFactor}
-        itemName={item.name}
-        measurementType={item.measurementType}
-        measurementValueCm={item.measurementValue}
-        bboxX={asset.bboxX}
-        bboxY={asset.bboxY}
-        bboxZ={asset.bboxZ}
+          itemName={item.name}
+          platform={platform}
+          glbUrl={asset.glbUrl}
+          usdzUrl={asset.usdzUrl}
+          scaleFactor={asset.scaleFactor}
+          measurementType={item.measurementType}
+          measurementValueCm={item.measurementValue}
+          bboxX={asset.bboxX}
+          bboxY={asset.bboxY}
+          bboxZ={asset.bboxZ}
         />
       </ARErrorBoundary>
     </main>

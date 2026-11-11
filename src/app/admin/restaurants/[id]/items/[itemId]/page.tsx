@@ -1,60 +1,88 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { AdminLogoutButton } from "@/app/admin/AdminLogoutButton";
+import { buttonClass } from "@/components/ui";
+import { ExternalIcon } from "@/components/icons";
+import { AdminShell } from "@/app/admin/AdminShell";
 import { EditItemForm } from "./EditItemForm";
 import { ItemPhotosSection } from "./ItemPhotosSection";
 import { ItemGenerate3DSection } from "./ItemGenerate3DSection";
 
-export default async function AdminEditItemPage({
-  params,
-}: {
-  params: Promise<{ id: string; itemId: string }>;
-}) {
+type Props = { params: Promise<{ id: string; itemId: string }> };
+
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { itemId } = await params;
+  const item = await prisma.menuItem.findUnique({ where: { id: itemId }, select: { name: true } });
+  return { title: item?.name ?? "Dish" };
+}
+
+export default async function AdminEditItemPage({ params }: Props) {
   const { id: restaurantId, itemId } = await params;
   const item = await prisma.menuItem.findFirst({
     where: { id: itemId, restaurantId },
     include: {
-      category: { select: { id: true, name: true } },
-      media: { orderBy: { sortOrder: "asc" } },
+      restaurant: {
+        select: {
+          name: true,
+          slug: true,
+          categories: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } },
+        },
+      },
+      media: { orderBy: { sortOrder: "asc" }, select: { id: true, url: true, sortOrder: true } },
+      _count: { select: { assets: true } },
     },
   });
   if (!item) notFound();
 
-  const restaurant = await prisma.restaurant.findUnique({
-    where: { id: restaurantId },
-    select: { name: true, slug: true },
-  });
-  if (!restaurant) notFound();
+  const publicPath = `/r/${item.restaurant.slug}/item/${item.id}`;
 
   return (
-    <main className="min-h-screen p-8">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link href={`/admin/restaurants/${restaurantId}`} className="text-blue-600 underline">
-            ← {restaurant.name}
-          </Link>
-          <h1 className="text-2xl font-bold">Edit: {item.name}</h1>
+    <AdminShell
+      active="restaurants"
+      crumbs={[
+        { label: "Restaurants", href: "/admin" },
+        { label: item.restaurant.name, href: `/admin/restaurants/${restaurantId}` },
+        { label: item.name },
+      ]}
+      title={item.name}
+      actions={
+        item.isAvailable && (
+          <a href={publicPath} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary", "sm")}>
+            <ExternalIcon size={16} /> View on menu
+          </a>
+        )
+      }
+    >
+      <div className="grid items-start gap-6 lg:grid-cols-[1fr_360px]">
+        <div className="min-w-0 space-y-6">
+          <ItemPhotosSection itemId={item.id} media={item.media} />
+          <EditItemForm
+            itemId={item.id}
+            restaurantId={restaurantId}
+            categories={item.restaurant.categories}
+            hasModel={item._count.assets > 0}
+            initial={{
+              name: item.name,
+              description: item.description ?? "",
+              price: item.price ?? "",
+              isAvailable: item.isAvailable,
+              categoryId: item.categoryId ?? "",
+              measurementType: item.measurementType,
+              measurementValue: item.measurementValue,
+            }}
+          />
         </div>
-        <AdminLogoutButton />
+        <div className="lg:sticky lg:top-20">
+          <ItemGenerate3DSection
+            itemId={item.id}
+            initialStatus={item.arAssetStatus}
+            initialPhotoCount={item.media.length}
+            previewPath={`${publicPath}/ar`}
+          />
+        </div>
       </div>
-
-      <EditItemForm
-        itemId={item.id}
-        restaurantId={restaurantId}
-        initial={{
-          name: item.name,
-          description: item.description ?? "",
-          price: item.price ?? "",
-          isAvailable: item.isAvailable,
-          measurementType: item.measurementType,
-          measurementValue: item.measurementValue,
-        }}
-      />
-
-      <ItemPhotosSection itemId={item.id} media={item.media} />
-
-      <ItemGenerate3DSection itemId={item.id} initialStatus={item.arAssetStatus} />
-    </main>
+    </AdminShell>
   );
 }

@@ -1,13 +1,11 @@
 /**
- * Scale calculation per TECH_SPECS §5.
+ * Real-world scale math.
  * All rendering uses meters; scaleFactor = targetMeters / modelDimensionMeters.
  */
 
-export type MeasurementType =
-  | "PLATE_DIAMETER_CM"
-  | "BOWL_DIAMETER_CM"
-  | "CUP_HEIGHT_CM"
-  | "MAX_WIDTH_CM";
+import type { MeasurementType } from "./measurement";
+
+export type { MeasurementType };
 
 export function getModelDimensionMeters(
   measurementType: MeasurementType,
@@ -40,6 +38,18 @@ export function computeScaleFactor(
 ): number {
   const targetMeters = measurementValueCm / 100;
   const modelDim = getModelDimensionMeters(measurementType, bboxX, bboxY, bboxZ);
-  if (modelDim <= 0) return 1;
+  if (!(modelDim > 0) || !Number.isFinite(modelDim)) return 1;
   return targetMeters / modelDim;
+}
+
+/** Relative difference above which a baked-in scale (USDZ, Scene Viewer GLB) counts as out of date. */
+const BAKED_SCALE_TOLERANCE = 0.01;
+
+/**
+ * The USDZ and the Android GLB have the item's size baked in when they are generated.
+ * If the measurement was edited afterwards, those files show the old size until regenerated.
+ */
+export function isBakedScaleStale(bakedScaleFactor: number, currentScaleFactor: number): boolean {
+  if (!(bakedScaleFactor > 0) || !(currentScaleFactor > 0)) return false;
+  return Math.abs(currentScaleFactor - bakedScaleFactor) / bakedScaleFactor > BAKED_SCALE_TOLERANCE;
 }

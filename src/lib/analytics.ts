@@ -1,19 +1,10 @@
 /**
- * Client analytics per TECH_SPECS §9.
- * Events: menu_view, item_view, ar_open, ar_supported, ar_place_success, etc.
+ * Browser analytics tracker. Events and validation live in ./analytics-events.
  */
 
-export type AnalyticsEventName =
-  | "menu_view"
-  | "category_view"
-  | "item_view"
-  | "ar_open"
-  | "ar_supported"
-  | "ar_permission_result"
-  | "ar_asset_load_time_ms"
-  | "ar_place_success"
-  | "ar_session_duration_ms"
-  | "ar_fallback_used";
+import type { AnalyticsEventName, ArMode } from "./analytics-events";
+
+export type { AnalyticsEventName, ArMode };
 
 export type AnalyticsProperties = {
   restaurantId?: string;
@@ -21,17 +12,17 @@ export type AnalyticsProperties = {
   deviceType?: string;
   os?: string;
   browser?: string;
-  arMode?: "webxr" | "quicklook" | "3dviewer";
+  arMode?: ArMode;
   [key: string]: string | number | boolean | undefined;
 };
 
 function getDeviceInfo(): { deviceType: string; os: string; browser: string } {
-  if (typeof navigator === "undefined")
-    return { deviceType: "unknown", os: "unknown", browser: "unknown" };
+  if (typeof navigator === "undefined") return { deviceType: "unknown", os: "unknown", browser: "unknown" };
   const ua = navigator.userAgent;
+
   let deviceType = "desktop";
-  if (/iPhone|iPad|iPod|Android/i.test(ua)) deviceType = "mobile";
-  else if (/tablet|ipad/i.test(ua)) deviceType = "tablet";
+  if (/iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua))) deviceType = "tablet";
+  else if (/iPhone|iPod|Android/i.test(ua)) deviceType = "mobile";
 
   let os = "unknown";
   if (/iPhone|iPad|iPod/.test(ua)) os = "iOS";
@@ -41,37 +32,33 @@ function getDeviceInfo(): { deviceType: string; os: string; browser: string } {
   else if (/Linux/.test(ua)) os = "Linux";
 
   let browser = "unknown";
-  if (/Chrome/.test(ua) && !/Edge/.test(ua)) browser = "Chrome";
-  else if (/Safari/.test(ua) && !/Chrome/.test(ua)) browser = "Safari";
-  else if (/Firefox/.test(ua)) browser = "Firefox";
-  else if (/Edge/.test(ua)) browser = "Edge";
+  if (/Edg\//.test(ua)) browser = "Edge";
+  else if (/CriOS|Chrome/.test(ua)) browser = "Chrome";
+  else if (/FxiOS|Firefox/.test(ua)) browser = "Firefox";
+  else if (/Safari/.test(ua)) browser = "Safari";
 
   return { deviceType, os, browser };
 }
 
-export async function trackEvent(
-  eventName: AnalyticsEventName,
-  properties?: AnalyticsProperties
-): Promise<void> {
+export function trackEvent(eventName: AnalyticsEventName, properties?: AnalyticsProperties): void {
   const { deviceType, os, browser } = getDeviceInfo();
+  const { restaurantId, itemId, ...rest } = properties ?? {};
   const payload = {
     eventName,
-    restaurantId: properties?.restaurantId,
-    itemId: properties?.itemId,
+    restaurantId,
+    itemId,
     properties: {
-      ...properties,
-      deviceType: properties?.deviceType ?? deviceType,
-      os: properties?.os ?? os,
-      browser: properties?.browser ?? browser,
+      ...rest,
+      deviceType: rest.deviceType ?? deviceType,
+      os: rest.os ?? os,
+      browser: rest.browser ?? browser,
     },
   };
-  try {
-    await fetch("/api/analytics/event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch (e) {
-    console.warn("[analytics] Failed to track:", eventName, e);
-  }
+  // keepalive lets the request finish when the tap navigates away (Quick Look, Scene Viewer).
+  fetch("/api/analytics/event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  }).catch((e) => console.warn("[analytics] Failed to track:", eventName, e));
 }

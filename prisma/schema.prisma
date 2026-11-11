@@ -1,5 +1,4 @@
 // Data model for v1.
-// Authoritative source: docs/TECH_SPECS.md (Data Model section).
 
 generator client {
   provider = "prisma-client-js"
@@ -51,27 +50,32 @@ model MenuCategory {
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   items      MenuItem[]
+
+  @@index([restaurantId, sortOrder])
 }
 
 model MenuItem {
-  id              String          @id @default(uuid())
-  restaurantId    String
-  categoryId      String?
-  name            String
-  description     String?
-  price           String?
-  isAvailable     Boolean         @default(true)
-  measurementType MeasurementType
+  id               String          @id @default(uuid())
+  restaurantId     String
+  categoryId       String?
+  name             String
+  description      String?
+  price            String?
+  isAvailable      Boolean         @default(true)
+  measurementType  MeasurementType
   measurementValue Float
-  arAssetStatus   ArAssetStatus   @default(NONE)
-  arAssetVersion  Int             @default(0)
+  arAssetStatus    ArAssetStatus   @default(NONE)
+  arAssetVersion   Int             @default(0)
 
-  restaurant Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurant Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   category   MenuCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   media  MenuItemMedia[]
   assets MenuItemAsset[]
   jobs   ProcessingJob[]
+
+  @@index([restaurantId])
+  @@index([categoryId])
 }
 
 model MenuItemMedia {
@@ -82,6 +86,8 @@ model MenuItemMedia {
   metadata  Json?
 
   item MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, sortOrder])
 }
 
 model MenuItemAsset {
@@ -90,29 +96,37 @@ model MenuItemAsset {
   version     Int
   glbUrl      String
   usdzUrl     String?
+  /// GLB with real-world scale baked in, for Android Scene Viewer.
+  arGlbUrl    String?
   units       String
   bboxX       Float
   bboxY       Float
   bboxZ       Float
+  /// Scale baked into usdzUrl and arGlbUrl when they were generated.
   scaleFactor Float
-  polyCount   Int?
-  textureSize Int?
   createdAt   DateTime @default(now())
 
   item MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, version])
 }
 
 model ProcessingJob {
-  id           String              @id @default(uuid())
-  itemId       String
-  version      Int
-  status       ProcessingJobStatus
-  errorMessage String?
-  logsUrl      String?
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  id                 String              @id @default(uuid())
+  itemId             String
+  version            Int
+  status             ProcessingJobStatus
+  errorMessage       String?
+  /// Tripo task ids, saved as tasks are created so a retry resumes instead of paying again.
+  tripoBaseTaskId    String?
+  tripoLowpolyTaskId String?
+  tripoUsdzTaskId    String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   item MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, createdAt])
 }
 
 model AnalyticsEvent {
@@ -122,4 +136,7 @@ model AnalyticsEvent {
   itemId       String?
   properties   Json?
   createdAt    DateTime @default(now())
+
+  @@index([restaurantId, createdAt])
+  @@index([createdAt])
 }

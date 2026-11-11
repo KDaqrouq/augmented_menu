@@ -1,54 +1,14 @@
 import { Queue, Worker, type Job } from "bullmq";
 import IORedis from "ioredis";
 import { processGenerate3DJob } from "./process-generate-3d-job";
+import { getRedisConnectionOptions } from "./redis-config";
+
+export { getRedisConnectionOptions, type RedisConnectionOptions } from "./redis-config";
 
 const QUEUE_NAME = "model-generation";
 
-function getRedisUrl(): string {
-  const url = process.env.REDIS_URL;
-  if (!url) throw new Error("REDIS_URL is required for the job queue");
-  return url;
-}
-
-export type RedisConnectionOptions = {
-  host: string;
-  port: number;
-  username?: string;
-  password?: string;
-  maxRetriesPerRequest?: number | null;
-  tls?: Record<string, unknown> | object;
-};
-
-/**
- * Parse REDIS_URL into connection options for BullMQ.
- * Supports redis:// and rediss:// (TLS). Uses only host/port/username/password; no REST tokens.
- */
-export function getRedisConnectionOptions(overrides?: Partial<RedisConnectionOptions>): RedisConnectionOptions {
-  const url = getRedisUrl();
-  const parsed = new URL(url);
-
-  if (parsed.protocol !== "redis:" && parsed.protocol !== "rediss:") {
-    throw new Error("REDIS_URL must use redis:// or rediss:// protocol");
-  }
-  if (parsed.pathname && parsed.pathname !== "/" && parsed.pathname !== "") {
-    throw new Error("REDIS_URL must not include path (use redis://host:port only)");
-  }
-
-  const host = parsed.hostname;
-  const port = parseInt(parsed.port || "6379", 10);
-  const useTls = parsed.protocol === "rediss:";
-
-  const opts: RedisConnectionOptions = {
-    host,
-    port,
-    ...(parsed.username && { username: decodeURIComponent(parsed.username) }),
-    ...(parsed.password && { password: decodeURIComponent(parsed.password) }),
-    ...(useTls && { tls: { servername: host } }),
-    ...overrides,
-  };
-
-  return opts;
-}
+/** Retries are cheap: Tripo task ids are saved, so a retry polls instead of paying again. */
+const JOB_ATTEMPTS = 3;
 
 /**
  * Test Redis connectivity (connect + PING). Use on worker startup.
@@ -57,12 +17,8 @@ export function getRedisConnectionOptions(overrides?: Partial<RedisConnectionOpt
 export async function testRedisConnection(): Promise<void> {
   const opts = getRedisConnectionOptions({ maxRetriesPerRequest: null });
   const client = new IORedis({
-    host: opts.host,
-    port: opts.port,
-    username: opts.username,
-    password: opts.password,
+    ...opts,
     maxRetriesPerRequest: opts.maxRetriesPerRequest ?? null,
-    ...(opts.tls && { tls: opts.tls }),
     retryStrategy: () => null,
     connectTimeout: 10000,
   });
@@ -95,53 +51,41 @@ let queue: Queue<JobPayload> | null = null;
 
 /**
  * Get the model-generation queue (lazy init).
- * Retries: 3 attempts with exponential backoff. Completed/failed jobs are trimmed so Redis does not grow indefinitely.
+ * Completed/failed jobs are trimmed so Redis does not grow indefinitely.
  */
 export function getModelGenerationQueue(): Queue<JobPayload> {
   if (!queue) {
-    const connection = getRedisConnectionOptions();
     queue = new Queue<JobPayload>(QUEUE_NAME, {
-      connection,
+      connection: getRedisConnectionOptions(),
       defaultJobOptions: {
         removeOnComplete: { count: 100 },
         removeOnFail: { count: 500 },
-        attempts: 3,
-        backoff: { type: "exponential", delay: 2000 },
+        attempts: JOB_ATTEMPTS,
+        backoff: { type: "exponential", delay: 5000 },
       },
     });
   }
   return queue;
 }
 
-/**
- * Add a job to the queue. Use from API routes.
- * Uses job-level retry/backoff (3 attempts, exponential).
- */
+/** Add a generate-3d job. Uses the ProcessingJob id as the BullMQ job id. */
 export async function enqueueGenerate3D(payload: Generate3DPayload): Promise<string> {
-  const q = getModelGenerationQueue();
-  const job = await q.add("generate-3d", payload, {
+  const job = await getModelGenerationQueue().add("generate-3d", payload, {
     jobId: payload.processingJobId,
-    attempts: 3,
-    backoff: { type: "exponential", delay: 2000 },
   });
   return job.id!;
 }
 
-/**
- * Enqueue a dummy job for testing (Checkpoint 3A).
- */
+/** Enqueue a dummy job for testing the queue + worker. */
 export async function enqueueDummyJob(): Promise<string> {
-  const q = getModelGenerationQueue();
-  const job = await q.add("dummy", { type: "dummy" });
+  const job = await getModelGenerationQueue().add("dummy", { type: "dummy" }, { attempts: 1 });
   return job.id!;
 }
 
 /**
- * Create a worker that processes jobs. Run in a separate process (e.g. npm run worker).
+ * Create a worker that processes jobs. Run in a separate process (npm run worker).
  */
 export function createModelGenerationWorker(): Worker<JobPayload, void> {
-  const connection = getRedisConnectionOptions({ maxRetriesPerRequest: null });
-
   const worker = new Worker<JobPayload>(
     QUEUE_NAME,
     async (job: Job<JobPayload>) => {
@@ -150,15 +94,19 @@ export function createModelGenerationWorker(): Worker<JobPayload, void> {
         return;
       }
       if (job.data.type === "generate-3d") {
-        await processGenerate3DJob(job.data);
+        const attempt = job.attemptsMade + 1;
+        await processGenerate3DJob(job.data, {
+          attempt,
+          isFinalAttempt: attempt >= (job.opts.attempts ?? 1),
+        });
         return;
       }
       throw new Error("Unknown job type");
     },
-    { connection, concurrency: 1 }
+    { connection: getRedisConnectionOptions({ maxRetriesPerRequest: null }), concurrency: 1 }
   );
 
   worker.on("completed", (j) => console.log("Job completed:", j.id));
-  worker.on("failed", (j, err) => console.error("Job failed:", j?.id, err));
+  worker.on("failed", (j, err) => console.error("Job failed:", j?.id, err.message));
   return worker;
 }

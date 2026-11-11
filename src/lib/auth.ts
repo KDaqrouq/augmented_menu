@@ -1,59 +1,36 @@
 import { cookies } from "next/headers";
+import {
+  createSessionToken,
+  verifySessionToken,
+  SESSION_COOKIE_NAME,
+  SESSION_TTL_SECONDS,
+} from "./session";
 
-const COOKIE_NAME = "admin_session";
-const COOKIE_MAX_AGE = 60 * 60 * 24; // 24 hours
+export { verifySessionToken, verifyAdminPassword, SESSION_COOKIE_NAME } from "./session";
 
 /**
- * v1 admin auth: simple password gate (IMPLEMENTATION_PLAN Checkpoint 1C).
- * Session is a signed cookie; no user table. Document in README.
- * Uses Web Crypto so middleware (Edge) and server can share logic.
+ * v1 admin auth: single password gate, no user table.
+ * The cookie holds an HMAC-signed, expiring token (see ./session.ts), never the password or its hash.
  */
-async function getAdminPasswordHash(): Promise<string> {
-  const pwd = process.env.ADMIN_PASSWORD;
-  if (!pwd) return "";
-  const buf = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(pwd)
-  );
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let out = 0;
-  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return out === 0;
-}
-
-export async function getSessionToken(): Promise<string> {
-  return getAdminPasswordHash();
-}
-
-export async function verifySessionToken(token: string): Promise<boolean> {
-  const expected = await getAdminPasswordHash();
-  return !!expected && constantTimeEqual(token, expected);
-}
-
 export async function getAdminSession(): Promise<boolean> {
   const store = await cookies();
-  const token = store.get(COOKIE_NAME)?.value;
+  const token = store.get(SESSION_COOKIE_NAME)?.value;
   return !!token && verifySessionToken(token);
 }
 
 export async function setAdminSessionCookie(): Promise<void> {
+  const token = await createSessionToken();
   const store = await cookies();
-  store.set(COOKIE_NAME, await getSessionToken(), {
+  store.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: COOKIE_MAX_AGE,
+    maxAge: SESSION_TTL_SECONDS,
     path: "/",
   });
 }
 
 export async function clearAdminSessionCookie(): Promise<void> {
   const store = await cookies();
-  store.delete(COOKIE_NAME);
+  store.delete(SESSION_COOKIE_NAME);
 }

@@ -1,56 +1,57 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { revalidatePublicMenu } from "@/lib/menu";
+import { slugify } from "@/lib/slug";
 
 /**
  * GET /api/admin/restaurants
- * Returns all restaurants with categories and item counts (for admin UI).
+ * Returns all restaurants with category and item counts (for admin UI).
  */
 export async function GET() {
   const restaurants = await prisma.restaurant.findMany({
     orderBy: { createdAt: "desc" },
-    include: {
-      categories: { orderBy: { sortOrder: "asc" } },
-      _count: { select: { items: true } },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      createdAt: true,
+      _count: { select: { items: true, categories: true } },
     },
   });
   return NextResponse.json(
-    restaurants.map((r) => ({
+    restaurants.map(({ _count, ...r }) => ({
       ...r,
-      itemCount: r._count.items,
-      _count: undefined,
+      itemCount: _count.items,
+      categoryCount: _count.categories,
     }))
   );
 }
 
 /**
  * POST /api/admin/restaurants
- * Body: { name, slug }
- * TECH_SPECS §4 Admin API.
+ * Body: { name, slug? } — slug defaults to the name, normalized to a URL-safe form.
  */
 export async function POST(request: Request) {
-  let body: { name?: string; slug?: string };
+  let body: { name?: unknown; slug?: unknown };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const { name, slug } = body;
-  if (typeof name !== "string" || !name.trim() || typeof slug !== "string" || !slug.trim()) {
-    return NextResponse.json(
-      { error: "name and slug are required" },
-      { status: 400 }
-    );
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const slug = slugify(typeof body.slug === "string" && body.slug.trim() ? body.slug : name);
+  if (!name || !slug) {
+    return NextResponse.json({ error: "A name (and a URL slug with letters or digits) is required" }, { status: 400 });
   }
-  const normalizedSlug = slug.trim().toLowerCase().replace(/\s+/g, "-");
   try {
-    const restaurant = await prisma.restaurant.create({
-      data: { name: name.trim(), slug: normalizedSlug },
-    });
+    const restaurant = await prisma.restaurant.create({ data: { name, slug } });
+    revalidatePublicMenu();
     return NextResponse.json(restaurant);
   } catch (e: unknown) {
-    const msg = e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002"
-      ? "Slug already in use"
-      : "Failed to create restaurant";
-    return NextResponse.json({ error: msg }, { status: 400 });
+    const taken = e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002";
+    return NextResponse.json(
+      { error: taken ? `The URL /r/${slug} is already in use` : "Failed to create restaurant" },
+      { status: 400 }
+    );
   }
 }

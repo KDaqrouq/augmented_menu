@@ -2,45 +2,60 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import type { MeasurementType } from "@/lib/measurement";
+import { Alert, Card, CardHeader, Field, buttonClass, inputClass } from "@/components/ui";
+import { MeasurementFields } from "@/app/admin/MeasurementFields";
 
-const MEASUREMENT_OPTIONS = [
-  "PLATE_DIAMETER_CM",
-  "BOWL_DIAMETER_CM",
-  "CUP_HEIGHT_CM",
-  "MAX_WIDTH_CM",
-];
+type Values = {
+  name: string;
+  description: string;
+  price: string;
+  isAvailable: boolean;
+  categoryId: string;
+  measurementType: MeasurementType;
+  measurementValue: number;
+};
 
 export function EditItemForm({
   itemId,
   restaurantId,
+  categories,
+  hasModel,
   initial,
 }: {
   itemId: string;
   restaurantId: string;
-  initial: {
-    name: string;
-    description: string;
-    price: string;
-    isAvailable: boolean;
-    measurementType: string;
-    measurementValue: number;
-  };
+  categories: { id: string; name: string }[];
+  hasModel: boolean;
+  initial: Values;
 }) {
   const router = useRouter();
+  const [saved, setSaved] = useState(initial);
   const [name, setName] = useState(initial.name);
   const [description, setDescription] = useState(initial.description);
   const [price, setPrice] = useState(initial.price);
   const [isAvailable, setIsAvailable] = useState(initial.isAvailable);
+  const [categoryId, setCategoryId] = useState(initial.categoryId);
   const [measurementType, setMeasurementType] = useState(initial.measurementType);
-  const [measurementValue, setMeasurementValue] = useState(initial.measurementValue);
+  const [measurementValue, setMeasurementValue] = useState<number | "">(initial.measurementValue);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState<"saved" | "regenerate" | null>(null);
+
+  const sizeEdited = measurementType !== saved.measurementType || measurementValue !== saved.measurementValue;
+  const dirty =
+    sizeEdited ||
+    name !== saved.name ||
+    description !== saved.description ||
+    price !== saved.price ||
+    isAvailable !== saved.isAvailable ||
+    categoryId !== saved.categoryId;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setNotice(null);
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/items/${itemId}`, {
@@ -48,19 +63,29 @@ export function EditItemForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
-          description: description || null,
-          price: price || null,
+          description,
+          price,
           isAvailable,
+          categoryId: categoryId || null,
           measurementType,
-          measurementValue,
+          measurementValue: measurementValue === "" ? null : measurementValue,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error ?? "Failed to update");
+        setError(data.error ?? "Failed to save");
         return;
       }
-      router.push(`/admin/restaurants/${restaurantId}`);
+      setSaved({
+        name,
+        description,
+        price,
+        isAvailable,
+        categoryId,
+        measurementType,
+        measurementValue: measurementValue === "" ? saved.measurementValue : measurementValue,
+      });
+      setNotice(data.needsRegeneration ? "regenerate" : "saved");
       router.refresh();
     } catch {
       setError("Request failed");
@@ -70,9 +95,7 @@ export function EditItemForm({
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete item "${name}"? This cannot be undone.`)) {
-      return;
-    }
+    if (!confirm(`Delete “${saved.name}”? Its photos and 3D model are deleted too.`)) return;
     setError("");
     setDeleting(true);
     try {
@@ -92,92 +115,82 @@ export function EditItemForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-6 max-w-md space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700">Name</label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
-          required
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700">Description</label>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
-          rows={2}
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700">Price</label>
-        <input
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="available"
-          checked={isAvailable}
-          onChange={(e) => setIsAvailable(e.target.checked)}
-        />
-        <label htmlFor="available" className="text-sm font-medium text-gray-700">Available</label>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700">Measurement type</label>
-        <select
-          value={measurementType}
-          onChange={(e) => setMeasurementType(e.target.value)}
-          className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
-        >
-          {MEASUREMENT_OPTIONS.map((o) => (
-            <option key={o} value={o}>{o}</option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700">
-          Measurement value (cm, 1–200)
-        </label>
-        <input
-          type="number"
-          min={1}
-          max={200}
-          step={0.1}
+    <Card>
+      <CardHeader title="Details" />
+      <form onSubmit={handleSubmit} className="space-y-4 p-5">
+        <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
+          <Field label="Dish name" htmlFor="edit-name">
+            <input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required />
+          </Field>
+          <Field label="Price" htmlFor="edit-price">
+            <input id="edit-price" value={price} onChange={(e) => setPrice(e.target.value)} className={inputClass} />
+          </Field>
+        </div>
+        <Field label="Description" htmlFor="edit-desc">
+          <textarea
+            id="edit-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className={inputClass}
+            rows={3}
+          />
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Category" htmlFor="edit-cat">
+            <select id="edit-cat" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
+              <option value="">No category (shown under “More”)</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Visibility" htmlFor="edit-available">
+            <label className="flex h-[38px] cursor-pointer items-center gap-2 rounded-xl border border-stone-300 bg-white px-3 text-sm shadow-sm">
+              <input
+                id="edit-available"
+                type="checkbox"
+                checked={isAvailable}
+                onChange={(e) => setIsAvailable(e.target.checked)}
+                className="h-4 w-4 rounded border-stone-300 accent-brand-600"
+              />
+              Show on the menu
+            </label>
+          </Field>
+        </div>
+        <MeasurementFields
+          idPrefix="edit"
+          type={measurementType}
           value={measurementValue}
-          onChange={(e) => setMeasurementValue(Number(e.target.value))}
-          className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+          onTypeChange={setMeasurementType}
+          onValueChange={setMeasurementValue}
         />
-      </div>
-      {error && <p className="text-red-600">{error}</p>}
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="submit"
-          disabled={loading || deleting}
-          className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? "Saving…" : "Save"}
-        </button>
-        <Link
-          href={`/admin/restaurants/${restaurantId}`}
-          className="rounded border border-gray-300 px-4 py-2 hover:bg-gray-100"
-        >
-          Cancel
-        </Link>
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={loading || deleting}
-          className="ml-auto rounded border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50 disabled:opacity-50"
-        >
-          {deleting ? "Deleting…" : "Delete item"}
-        </button>
-      </div>
-    </form>
+        {hasModel && sizeEdited && (
+          <Alert tone="amber">
+            The iPhone and Android AR files have the current size built in. After saving, generate the 3D model again so
+            they match.
+          </Alert>
+        )}
+        {error && <Alert>{error}</Alert>}
+        {notice === "saved" && !dirty && <Alert tone="green">Saved.</Alert>}
+        {notice === "regenerate" && !dirty && (
+          <Alert tone="amber">Saved. Generate the 3D model again so iPhone and Android AR use the new size.</Alert>
+        )}
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button type="submit" disabled={loading || deleting || !dirty} className={buttonClass("primary", "md")}>
+            {loading ? "Saving…" : "Save changes"}
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={loading || deleting}
+            className={buttonClass("danger", "md", "ml-auto")}
+          >
+            {deleting ? "Deleting…" : "Delete dish"}
+          </button>
+        </div>
+      </form>
+    </Card>
   );
 }

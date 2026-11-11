@@ -1,6 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { buttonClass } from "@/components/ui";
+import { LogoutIcon } from "@/components/icons";
 
 export function AdminLogoutButton() {
   const router = useRouter();
@@ -12,12 +14,9 @@ export function AdminLogoutButton() {
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleLogout}
-      className="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-100"
-    >
-      Log out
+    <button type="button" onClick={handleLogout} className={buttonClass("ghost", "sm")}>
+      <LogoutIcon size={16} />
+      <span className="hidden sm:inline">Log out</span>
     </button>
   );
 }
