@@ -55,8 +55,6 @@ I measured these against the real database and storage:
 | Mobile menu download | 3.4 MB to 260 KB, main content shows 33% sooner |
 | Web and iPhone models | same size within 0.35% |
 
-How each one was measured, the sample sizes and how to rerun them are in [docs/metrics.md](docs/metrics.md).
-
 ## Tech stack
 
 - Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS
